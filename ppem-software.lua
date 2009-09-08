@@ -19,6 +19,7 @@ for each set of data, the following things have to be adjusted (user interface):
 If cut_edges does not satisfy you, because you need to cut off different amounts on each side, go to function estimate_maxima and set the corresponding sides one by one.
 
 *todo*
+graph_factor1 and 2 are only empirical. Not critical, but they should be calculatable!!
 --]]
 
 
@@ -26,7 +27,7 @@ If cut_edges does not satisfy you, because you need to cut off different amounts
 --”user interface“
 inputfile1 = "daten/09-09-01-1b.cod"
 inputfile2 = "daten/09-09-01-2b.cod"
-threshold = 8e-6 --minimum number of particles in one pixel to be not neglected
+threshold = 10e-6 --minimum number of particles in one pixel to be not neglected
 iteration_width = 4 --maximum number of steps between one point of an insula and the next one
 distance = 8        --maximum distance of two matching spots
 displacement = 0    --displacement of the detector in mm.
@@ -58,8 +59,8 @@ function estimate_maxima(file)
   tmp = io.read()
   x_two = io.read("*number")
   io.input(close)
-  steps = 2*x_one / (x_one-x_two) + 1
---steps=801
+  steps = math.ceil(2*x_one / (x_one-x_two) + 1)
+
   xmax,ymax = steps,steps
   print("Schritte: "..steps)
 
@@ -67,7 +68,6 @@ function estimate_maxima(file)
   y_max = ymax - cut_edges
   x_min = cut_edges --actually y
   x_max = xmax - cut_edges
-  print("Grenzen angepasst.")
 end
 
 -- prepares a temporary file with the cut edges. The first run will take much time, but the next run will be much shorter because the field does not need to be prepared again.
@@ -83,7 +83,7 @@ print("Hilfsdatei für diese Ränder wird erstellt.\n Dies kann einige Zeit in A
     end
   end
   io.input(close)
-print("Originaldaten gelesen und in tmpline gespeichert.")
+print("Originaldaten gelesen und in Variable tmpline gespeichert.")
   io.output(io.open(file.."_cut_"..cut_edges,"w"))
   for x = 1,xmax do
     for y = 1,ymax do
@@ -132,6 +132,7 @@ function read2dfrom1d(file)
     end
   end
   io.input(close)
+
   return field,totalnumberinplot
 end
 
@@ -212,11 +213,9 @@ function scan_island(x,y)
 end
 
 --calculates the weights of each spot
-function determine_spot_positionss(savefile)
+function determine_spot_positions()
   x_tmp = 0; y_tmp = 0               --for the calculation of <x²>, <y²>
   x_tmp_square = 0; y_tmp_square = 0 --for the calculation of <x²>, <y²>
-
-  io.output(io.open(savefile,"w"))
 
   for i = 1,#insulae do
     x_middle[i] = 0; y_middle[i] = 0; particles[i] = 0
@@ -237,12 +236,7 @@ function determine_spot_positionss(savefile)
     y_tmp_square = y_tmp_square + y_middle[i]*y_middle[i]
     x_tmp = x_tmp + x_middle[i]
     y_tmp = y_tmp + y_middle[i]
-
-    io.write("Spot "..i.." ("..particles[i].." Teilchen): \n")
-    io.write("  X-Mittelwert: ",x_middle[i],"\n")
-    io.write("  Y-Mittelwert: ",y_middle[i].."\n\n")
   end
-  io.close()
 end
 
 -- searches for matching points from both data sets. If the spots are not further away than "distance", they are considered to match.
@@ -303,6 +297,10 @@ end
 -- dito, for 5
 function v(number)
   return math.floor(number*100000)/100000
+end
+
+function color(number)
+  return "\\color{blue!"..(number*100).."!red}"
 end
 
 function write_texfile(texfile)
@@ -371,6 +369,18 @@ io.write("\\toprule Spot № & x & y & Anz. & x & y & Anz. & $\\Delta$ x & $\\De
   io.write("\\begin{gnuplot}unset key; set title 'y--dy'; set style data dots; p 'phase_space_diagramm_y'\\end{gnuplot}\n\n")
   io.write("\\begin{gnuplot}unset key; set title 'x--dx'; set style data dots; sp 'phase_space_diagramm_x'\\end{gnuplot}\n\n")
   io.write("\\begin{gnuplot}unset key; set title 'y--dy'; set style data dots; sp 'phase_space_diagramm_y'\\end{gnuplot}\n\n")
+
+  io.write("\\newpage\\minisec{Phasenraumdiagramm x}")
+  io.write("\\small\\hspace*{-.15\\textwidth}\\fbox{\\scalebox{"..530/xmax.."}{\\begin{picture}("..xmax..","..(xmax/2)..")")
+
+graph_factor1 = xmax/10 --stretch
+graph_factor2 = 0.5    --shift
+graph_factor3 = 70      --color
+  for i = 1,#spot_x do
+    io.write("\\put("..spot_x[i]..","..(graph_factor1*spot_dx[i]+xmax*graph_factor2).."){"..color(particles[i]*graph_factor3).."\\textbullet}\n")
+  end
+  io.write(epic)
+
   io.write(edoc)
   io.close()
 end
@@ -391,14 +401,15 @@ function process_file(file)
 
   --read the datafile
   mainfield,total = read2dfrom1d(file.."_cut_"..cut_edges)
-
+  --normalize the data – sum = 1
   mainfield = normalize_field(mainfield,total)
-
   --cut off the borders (eliminate edge-effects)
   insulafield = cut_border_and_threshold(mainfield)
 
   --scans for isolated areas. That will be the spots we’re looking for!
   scan_for_insulae()
+
+  determine_spot_positions()
 end
 
 --Die Hauptfunktion, die bei Programmaufruf gestartet wird.
@@ -414,7 +425,6 @@ function main()
   process_file(inputfile1)
 
   --takes an insula and calculates it’s weights
-  determine_spot_positionss("ppem_insulae_1.txt")
 
   io.output(io.open("datapoints1","w"))
   for i = 1, #x_middle do
@@ -429,7 +439,6 @@ function main()
   process_file(inputfile2)
 
   --takes an insula and calculates it’s weights
-  determine_spot_positionss("ppem_insulae_2.txt")
 
   io.output(io.open("datapoints2","w"))
   for i = 1, #x_middle do
@@ -446,11 +455,6 @@ function main()
   --write data to a tex-file, that will plot them (partly using gnuplot)
   write_texfile("plot-spots.tex")
   os.execute("xelatex -shell-escape -interaction=batchmode -jobname='ppem-software' plot-spots.tex")
-numbersinplot = 1
-  for i = 1,#particles1 do
-    numbersinplot = numbersinplot + particles1[i]
-  end
-print("Gesamtanzahl im Datensatz 1: "..numbersinplot)
 end
 
 main()
