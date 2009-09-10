@@ -27,10 +27,10 @@ graph_factor1 and 2 are only empirical. Not critical, but they should be calcula
 --”user interface“
 inputfile1 = "daten/09-09-01-1b.cod"
 inputfile2 = "daten/09-09-01-2b.cod"
-threshold = 10e-6 --minimum number of particles in one pixel to be not neglected
-iteration_width = 4 --maximum number of steps between one point of an insula and the next one
+threshold = 20e-6 --minimum number of particles in one pixel to be not neglected
+iteration_width = 5 --maximum number of steps between one point of an insula and the next one
 distance = 8        --maximum distance of two matching spots
-displacement = 0    --displacement of the detector in mm.
+displacement = 4   --displacement of the detector in mm.
 
 --FIXME! x and y are puzzled!
 --[[ WARNING: if you change the cut_edges, you have to change the threshold, too, to get usefull results!--]]
@@ -265,9 +265,9 @@ function match_spots()
 
         k = k+1
         spot_x[k] = x_middle1[i]
-        spot_dx[k] = x_middle1[i] - x_middle2[i]
+        spot_dx[k] = (x_middle1[i] - x_middle2[i])/displacement
         spot_y[k] = y_middle1[i]
-        spot_dy[k] = y_middle1[i] - y_middle2[i]
+        spot_dy[k] = (y_middle1[i] - y_middle2[i])/displacement
         particles[k] = particles1[i]
 
         found_matching = true
@@ -290,6 +290,46 @@ function match_spots()
   io.close()
 end
 
+-- calculates the rms emittance x and y.
+function calculate_emittance()
+  total = 0
+  x_bar = 0 dx_bar = 0
+  y_bar = 0 dy_bar = 0
+  for i = 1,#spot_x do
+    total = total + particles[i]
+    x_bar = x_bar + particles[i]*spot_x[i]
+    y_bar = y_bar + particles[i]*spot_y[i]
+    dx_bar = dx_bar + particles[i]*spot_dx[i]
+    dy_bar = dy_bar + particles[i]*spot_dy[i]
+  end
+  x_bar = x_bar / total
+  y_bar = x_bar / total
+print(x_bar)
+print(y_bar)
+print(dx_bar)
+print(dy_bar)
+  sum_x = 0 sum_dx = 0 sum_x_dx = 0
+  sum_y = 0 sum_dy = 0 sum_y_dy = 0
+  for i = 1,#spot_x do
+    sum_x = sum_x + (spot_x[i]*particles[i] - x_bar)^2
+    sum_y = sum_y + (spot_y[i]*particles[i] - y_bar)^2
+    sum_dx = sum_dx + (spot_dx[i]*particles[i] - dx_bar)^2
+    sum_dy = sum_dy + (spot_dy[i]*particles[i] - dy_bar)^2
+    sum_x_dx = sum_x_dx + (spot_x[i]*particles[i] - x_bar)*(spot_dx[i]*particles[i] - dx_bar)
+    sum_y_dy = sum_y_dy + (spot_y[i]*particles[i] - y_bar)*(spot_dy[i]*particles[i] - dy_bar)
+  end
+  x_sq = sum_x / total
+  y_sq = sum_y / total
+  dx_sq = sum_dx / total
+  dy_sq = sum_dy / total
+  x_dx = sum_x_dx / total
+  y_dy = sum_y_dy / total
+  rms_emitt_x = math.sqrt(x_sq*dx_sq - (x_dx)^2)
+  rms_emitt_y = math.sqrt(y_sq*dy_sq - (y_dy)^2)
+print("emittance x",rms_emitt_x)
+print("emittance y",rms_emitt_y)
+end
+
 -- just a very stupid way to write the numbers with only 2 digits.
 function ii(number)
   return math.floor(number*100)/100
@@ -300,7 +340,18 @@ function v(number)
 end
 
 function color(number)
-  return "\\color{blue!"..(number*100).."!red}"
+  r = "red" b = "blue" y = "yellow" o = "orange" g = "green" c = "cyan" p = "purple" bl = "black"
+  magnitude = -math.floor(math.log10(number))
+  number = number*10^(magnitude+1)
+  if magnitude>6 then fc = bl sc = bl
+    elseif magnitude == 6 then fc = bl sc = b
+    elseif magnitude == 5 then fc = b sc = c
+    elseif magnitude == 4 then fc = c sc = g
+    elseif magnitude == 3 then fc = g sc = r
+    elseif magnitude == 2 then fc = r sc = y
+    elseif magnitude == 1 then fc = y sc = y
+  end
+  return "\\color{"..fc.."!"..(number).."!"..sc.."}"
 end
 
 function write_texfile(texfile)
@@ -365,22 +416,26 @@ io.write("\\toprule Spot № & x & y & Anz. & x & y & Anz. & $\\Delta$ x & $\\De
     io.write(spots_not_matched[i].."\n\n")
   end
 
-  io.write("\\newpage\\begin{gnuplot}unset key; set title 'x--dx'; set style data dots; p 'phase_space_diagramm_x'\\end{gnuplot}\n\n")
-  io.write("\\begin{gnuplot}unset key; set title 'y--dy'; set style data dots; p 'phase_space_diagramm_y'\\end{gnuplot}\n\n")
-  io.write("\\begin{gnuplot}unset key; set title 'x--dx'; set style data dots; sp 'phase_space_diagramm_x'\\end{gnuplot}\n\n")
-  io.write("\\begin{gnuplot}unset key; set title 'y--dy'; set style data dots; sp 'phase_space_diagramm_y'\\end{gnuplot}\n\n")
-
+  io.write("\\newpage")
+  io.write("\\begin{gnuplot}unset key;set title 'x -- dx';set style data dots; p 'phase_space_diagramm_x'\\end{gnuplot}\n\n")
+  io.write("\\begin{gnuplot}unset key;set title 'y -- dy';set style data dots; p 'phase_space_diagramm_y'\\end{gnuplot}\n\n")
   io.write("\\newpage\\minisec{Phasenraumdiagramm x}")
   io.write("\\small\\hspace*{-.15\\textwidth}\\fbox{\\scalebox{"..530/xmax.."}{\\begin{picture}("..xmax..","..(xmax/2)..")")
 
-graph_factor1 = xmax/10 --stretch
-graph_factor2 = 0.5    --shift
-graph_factor3 = 70      --color
+graph_factorx1 = xmax/10 --stretch
+graph_factorx2 = 0.5    --shift
   for i = 1,#spot_x do
-    io.write("\\put("..spot_x[i]..","..(graph_factor1*spot_dx[i]+xmax*graph_factor2).."){"..color(particles[i]*graph_factor3).."\\textbullet}\n")
+    io.write("\\put("..spot_x[i]..","..(graph_factorx1*spot_dx[i]+xmax*graph_factorx2).."){"..color(particles[i]).."\\textbullet}\n")
   end
   io.write(epic)
-
+graph_factory1 = ymax/10 --stretch
+graph_factory2 = 0.1    --shift
+  io.write("\\minisec{Phasenraumdiagramm y}")
+  io.write("\\small\\hspace*{-.15\\textwidth}\\fbox{\\scalebox{"..530/ymax.."}{\\begin{picture}("..ymax..","..(ymax/2)..")")
+  for i = 1,#spot_y do
+    io.write("\\put("..spot_y[i]..","..(graph_factory1*spot_dy[i]+ymax*graph_factory2).."){"..color(particles[i]).."\\textbullet}\n")
+  end
+  io.write(epic.."\\\\")
   io.write(edoc)
   io.close()
 end
@@ -451,10 +506,10 @@ function main()
 
   print("Passende Spots werden gesucht und zugeordnet.")
   match_spots()
-
+  calculate_emittance()
   --write data to a tex-file, that will plot them (partly using gnuplot)
   write_texfile("plot-spots.tex")
-  os.execute("xelatex -shell-escape -interaction=batchmode -jobname='ppem-software' plot-spots.tex")
+  os.execute("xelatex -shell-escape -jobname='ppem-software' -interaction=batchmode plot-spots.tex")
 end
 
 main()
